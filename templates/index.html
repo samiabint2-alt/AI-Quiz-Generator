@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Quiz Generator — Team MechMind</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <h1>AI Quiz Generator</h1>
+    <p>Team MechMind — Automatic quiz creation from text using NLP</p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>Input</h2>
+      <textarea id="study-text" rows="10" placeholder="Paste study notes, article text, or educational content here..."></textarea>
+      <div class="controls">
+        <label>Questions per type:
+          <input type="number" id="max-per-type" value="3" min="1" max="10">
+        </label>
+        <button id="btn-generate">Generate Quiz</button>
+      </div>
+      <div class="pdf-upload">
+        <label>Or upload a PDF:
+          <input type="file" id="pdf-file" accept=".pdf">
+        </label>
+        <button id="btn-pdf">Generate from PDF</button>
+      </div>
+    </section>
+
+    <section class="panel" id="metrics-panel" hidden>
+      <h2>Performance Metrics</h2>
+      <div id="metrics"></div>
+    </section>
+
+    <section class="panel" id="quiz-panel" hidden>
+      <h2>Generated Quiz</h2>
+      <div id="quiz"></div>
+    </section>
+
+    <p id="error" class="error" hidden></p>
+  </main>
+
+  <script>
+    const studyText = document.getElementById('study-text');
+    const maxPerType = document.getElementById('max-per-type');
+    const btnGenerate = document.getElementById('btn-generate');
+    const btnPdf = document.getElementById('btn-pdf');
+    const pdfFile = document.getElementById('pdf-file');
+    const quizPanel = document.getElementById('quiz-panel');
+    const metricsPanel = document.getElementById('metrics-panel');
+    const quizEl = document.getElementById('quiz');
+    const metricsEl = document.getElementById('metrics');
+    const errorEl = document.getElementById('error');
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.hidden = !msg;
+    }
+
+    function renderQuiz(data) {
+      quizEl.innerHTML = '';
+      data.quiz.forEach((q, i) => {
+        const card = document.createElement('article');
+        card.className = 'quiz-card';
+        let html = `<h3>Q${i + 1} <span class="badge">${q.type}</span></h3><p>${q.question}</p>`;
+        if (q.options) {
+          html += '<ul>' + q.options.map((o, j) => `<li>${j + 1}. ${o}</li>`).join('') + '</ul>';
+        }
+        html += `<p class="answer"><strong>Answer:</strong> ${q.correct}</p>`;
+        card.innerHTML = html;
+        quizEl.appendChild(card);
+      });
+      quizPanel.hidden = false;
+
+      const m = data.metrics;
+      metricsEl.innerHTML = `
+        <ul>
+          <li><strong>Questions generated:</strong> ${m.count}</li>
+          <li><strong>Relevance (proxy):</strong> ${m.relevance_mean}</li>
+          <li><strong>Readability (proxy):</strong> ${m.readability_mean}</li>
+          <li><strong>Accuracy proxy:</strong> ${m.accuracy_proxy}</li>
+        </ul>`;
+      metricsPanel.hidden = false;
+    }
+
+    btnGenerate.addEventListener('click', async () => {
+      showError('');
+      btnGenerate.disabled = true;
+      try {
+        const res = await fetch('/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: studyText.value,
+            max_per_type: Number(maxPerType.value),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Generation failed');
+        renderQuiz(data);
+      } catch (e) {
+        showError(e.message);
+      } finally {
+        btnGenerate.disabled = false;
+      }
+    });
+
+    btnPdf.addEventListener('click', async () => {
+      showError('');
+      if (!pdfFile.files.length) {
+        showError('Select a PDF file first.');
+        return;
+      }
+      btnPdf.disabled = true;
+      const form = new FormData();
+      form.append('file', pdfFile.files[0]);
+      form.append('max_per_type', maxPerType.value);
+      try {
+        const res = await fetch('/generate-from-pdf', { method: 'POST', body: form });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'PDF generation failed');
+        renderQuiz(data);
+      } catch (e) {
+        showError(e.message);
+      } finally {
+        btnPdf.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
